@@ -1,5 +1,5 @@
 # youdenplot
-Plot a Youden plot
+Plot a Youden plot<br/>
 The Youden plot is a graphical method to analyse inter-laboratory data,
 where all laboratories have analysed 2 samples. The plot visualises
 within-laboratory variability as well as between-laboratory variability.  
