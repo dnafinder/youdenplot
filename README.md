@@ -34,14 +34,14 @@ Points that lie outside the tangents: gross errors
 
 Syntax: Out=youdenplot(data,group,alpha,verbose)
 
-Input: X - This is a Nx2 data matrix. This input is mandatory
+Input: X - This is a Nx2 data matrix. This input is mandatory<br/>
        Group - specifies one or more grouping variables G, producing a
        separate scatter plot for each set of X values sharing the same G
        value or values. Grouping variables must have one column per element
        of X. Specify a single grouping variable in G by using a vector.
-       By default, G=1:1:N;
-       ALPHA - significance level (default 0.05)
-       VERBOSE - if you want to see report (0-no; 1-yes by default);
+       By default, G=1:1:N;<br/>
+       ALPHA - significance level (default 0.05)<br/>
+       VERBOSE - if you want to see report (0-no; 1-yes by default);<br/>
 
 Output: if verbose = 0
         the Youden plots
