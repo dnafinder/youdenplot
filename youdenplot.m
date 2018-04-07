@@ -80,6 +80,15 @@ end
 clear p
 
 g=g(:); m=median(data); dm=diff(m); n=length(data); mm=repmat(m,n,1);
+
+if exist('distinguishable_colors.m','file')==0
+    filename=unzip('https://it.mathworks.com/matlabcentral/mlc-downloads/downloads/submissions/29702/versions/3/download/zip','prova');
+    Index = contains(filename,'distinguishable_colors.m');
+    current=cd;
+    copyfile(filename{Index},current)
+    rmdir('prova','s')
+    clear filename Index current 
+end
 colors=distinguishable_colors(max(g));
 %Pythagora's theorem
 ERR=realsqrt(sum((data-mm).^2,2)); %total magnitude of error (distance of the data point from the manhattan median)
