@@ -1,152 +1,231 @@
-function colors = distinguishable_colors(n_colors,bg,func)
-% DISTINGUISHABLE_COLORS: pick colors that are maximally perceptually distinct
+function colors = distinguishable_colors(n_colors, bg, func)
+%DISTINGUISHABLE_COLORS  Generate maximally perceptually distinct colors.
 %
-% When plotting a set of lines, you may want to distinguish them by color.
-% By default, Matlab chooses a small set of colors and cycles among them,
-% and so if you have more than a few lines there will be confusion about
-% which line is which. To fix this problem, one would want to be able to
-% pick a much larger set of distinct colors, where the number of colors
-% equals or exceeds the number of lines you want to plot. Because our
-% ability to distinguish among colors has limits, one should choose these
-% colors to be "maximally perceptually distinguishable."
+%   COLORS = DISTINGUISHABLE_COLORS(N_COLORS)
+%     Returns an N_COLORS-by-3 matrix of RGB values. Each row is a color
+%     that is chosen to be as perceptually distinct as possible from the
+%     others, based on distances in CIE Lab color space.
 %
-% This function generates a set of colors which are distinguishable
-% by reference to the "Lab" color space, which more closely matches
-% human color perception than RGB. Given an initial large list of possible
-% colors, it iteratively chooses the entry in the list that is farthest (in
-% Lab space) from all previously-chosen entries. While this "greedy"
-% algorithm does not yield a global maximum, it is simple and efficient.
-% Moreover, the sequence of colors is consistent no matter how many you
-% request, which facilitates the users' ability to learn the color order
-% and avoids major changes in the appearance of plots when adding or
-% removing lines.
+%   COLORS = DISTINGUISHABLE_COLORS(N_COLORS, BG)
+%     Also enforces distinguishability from one or more background colors.
+%     BG can be:
+%         - 1x3 numeric RGB triple
+%         - N_BG-by-3 numeric array of RGB triples
+%         - a color char, e.g. 'w', 'k', 'r', 'b', etc.
+%         - a cell array of such specs, e.g. {'w','k'} or
+%           [1 1 1; 0 0 0]
 %
-% Syntax:
-%   colors = distinguishable_colors(n_colors)
-% Specify the number of colors you want as a scalar, n_colors. This will
-% generate an n_colors-by-3 matrix, each row representing an RGB
-% color triple. If you don't precisely know how many you will need in
-% advance, there is no harm (other than execution time) in specifying
-% slightly more than you think you will need.
+%     In all cases, the resulting COLORS will be distinct from each other
+%     and from all background colors in BG.
 %
-%   colors = distinguishable_colors(n_colors,bg)
-% This syntax allows you to specify the background color, to make sure that
-% your colors are also distinguishable from the background. Default value
-% is white. bg may be specified as an RGB triple or as one of the standard
-% "ColorSpec" strings. You can even specify multiple colors:
-%     bg = {'w','k'}
-% or
-%     bg = [1 1 1; 0 0 0]
-% will only produce colors that are distinguishable from both white and
-% black.
+%   COLORS = DISTINGUISHABLE_COLORS(N_COLORS, BG, RGB2LABFUNC)
+%     Uses a user-supplied function RGB2LABFUNC to convert RGB to Lab
+%     space rather than the Image Processing Toolbox functions MAKECFORM
+%     and APPLYCFORM.
 %
-%   colors = distinguishable_colors(n_colors,bg,rgb2labfunc)
-% By default, distinguishable_colors uses the image processing toolbox's
-% color conversion functions makecform and applycform. Alternatively, you
-% can supply your own color conversion function.
+%     RGB2LABFUNC must be a function handle that maps an N-by-3 RGB matrix
+%     to an N-by-3 Lab matrix, e.g. using the File Exchange function
+%     "colorspace":
 %
-% Example:
+%         func = @(x) colorspace('RGB->Lab', x);
+%         c = distinguishable_colors(25, 'w', func);
+%
+% Algorithm
+% ---------
+%   1) Generate a dense grid of candidate colors in RGB space.
+%   2) Convert candidates and background colors to Lab space.
+%   3) Initialize the "distance to nearest chosen color" for each candidate
+%      using the background colors (all but the last one).
+%   4) Iteratively:
+%        - pick the candidate with the largest distance to already chosen
+%          colors,
+%        - append it to the output list,
+%        - update distances.
+%
+% Notes
+% -----
+%   - The algorithm is greedy, not globally optimal, ma è semplice,
+%     efficiente e deterministico rispetto a N_COLORS.
+%   - If N_COLORS is too large relative to the RGB sampling grid,
+%     the function throws an error.
+%
+% Example
+% -------
 %   c = distinguishable_colors(25);
 %   figure
-%   image(reshape(c,[1 size(c)]))
+%   image(reshape(c, [1 size(c)]))
+%   axis off
 %
-% Example using the file exchange's 'colorspace':
-%   func = @(x) colorspace('RGB->Lab',x);
-%   c = distinguishable_colors(25,'w',func);
+% Example with multiple backgrounds
+%   c = distinguishable_colors(15, {'w','k'});
+%
+% Example using the File Exchange 'colorspace'
+%   func = @(x) colorspace('RGB->Lab', x);
+%   c = distinguishable_colors(25, 'w', func);
+%
+% See also: MAKECFORM, APPLYCFORM
+%
+% -------------------------------------------------------------------------
+% Original algorithm and code:
+%   Copyright 2010-2011 by Timothy E. Holy
+%
+% Refactoring & documentation (no logic changes):
+%   2025-xx-xx  Minor input validation and help text improvements.
+% -------------------------------------------------------------------------
 
-% Copyright 2010-2011 by Timothy E. Holy
-
-  % Parse the inputs
-  if (nargin < 2)
-    bg = [1 1 1];  % default white background
-  else
-    if iscell(bg)
-      % User specified a list of colors as a cell aray
-      bgc = bg;
-      for i = 1:length(bgc)
-	bgc{i} = parsecolor(bgc{i});
-      end
-      bg = cat(1,bgc{:});
-    else
-      % User specified a numeric array of colors (n-by-3)
-      bg = parsecolor(bg);
-    end
-  end
-  
-  % Generate a sizable number of RGB triples. This represents our space of
-  % possible choices. By starting in RGB space, we ensure that all of the
-  % colors can be generated by the monitor.
-  n_grid = 30;  % number of grid divisions along each axis in RGB space
-  x = linspace(0,1,n_grid);
-  [R,G,B] = ndgrid(x,x,x);
-  rgb = [R(:) G(:) B(:)];
-  if (n_colors > size(rgb,1)/3)
-    error('You can''t readily distinguish that many colors');
-  end
-  
-  % Convert to Lab color space, which more closely represents human
-  % perception
-  if (nargin > 2)
-    lab = func(rgb);
-    bglab = func(bg);
-  else
-    C = makecform('srgb2lab');
-    lab = applycform(rgb,C);
-    bglab = applycform(bg,C);
-  end
-
-  % If the user specified multiple background colors, compute distances
-  % from the candidate colors to the background colors
-  mindist2 = inf(size(rgb,1),1);
-  for i = 1:size(bglab,1)-1
-    dX = bsxfun(@minus,lab,bglab(i,:)); % displacement all colors from bg
-    dist2 = sum(dX.^2,2);  % square distance
-    mindist2 = min(dist2,mindist2);  % dist2 to closest previously-chosen color
-  end
-  
-  % Iteratively pick the color that maximizes the distance to the nearest
-  % already-picked color
-  colors = zeros(n_colors,3);
-  lastlab = bglab(end,:);   % initialize by making the "previous" color equal to background
-  for i = 1:n_colors
-    dX = bsxfun(@minus,lab,lastlab); % displacement of last from all colors on list
-    dist2 = sum(dX.^2,2);  % square distance
-    mindist2 = min(dist2,mindist2);  % dist2 to closest previously-chosen color
-    [~,index] = max(mindist2);  % find the entry farthest from all previously-chosen colors
-    colors(i,:) = rgb(index,:);  % save for output
-    lastlab = lab(index,:);  % prepare for next iteration
-  end
+%% Input parsing & defaults
+if nargin < 1
+    error('distinguishable_colors:NotEnoughInputs', ...
+        'You must specify the number of colors N_COLORS.');
 end
 
+% Validate n_colors
+validateattributes(n_colors, {'numeric'}, ...
+    {'scalar','real','finite','nonnan','integer','positive'}, ...
+    mfilename, 'n_colors', 1);
+
+% Background color handling
+if nargin < 2 || isempty(bg)
+    % Default white background
+    bg = [1 1 1];
+else
+    if iscell(bg)
+        % User specified a list of colors as a cell array
+        bgc = bg;
+        for i = 1:numel(bgc)
+            bgc{i} = parsecolor(bgc{i});
+        end
+        bg = cat(1, bgc{:});
+    else
+        % User specified a numeric array of colors (n-by-3) or a char
+        bg = parsecolor(bg);
+    end
+end
+
+% Optional RGB->Lab function
+if nargin < 3 || isempty(func)
+    useCustomFunc = false;
+else
+    if ~isa(func, 'function_handle')
+        error('distinguishable_colors:InvalidFunctionHandle', ...
+            'RGB2LABFUNC must be a valid function handle.');
+    end
+    useCustomFunc = true;
+end
+
+%% Generate candidate RGB colors
+% Generate a sizable number of RGB triples. This represents our space of
+% possible choices. By starting in RGB space, we ensure that all of the
+% colors can be generated by the monitor.
+n_grid = 30;  % number of grid divisions along each axis in RGB space
+x = linspace(0, 1, n_grid);
+[R, G, B] = ndgrid(x, x, x);
+rgb = [R(:) G(:) B(:)];
+
+% Rough safeguard: too many colors requested for this grid density
+if n_colors > size(rgb, 1) / 3
+    error('distinguishable_colors:TooManyColorsRequested', ...
+        'You can''t readily distinguish that many colors.');
+end
+
+%% Convert to Lab color space
+% Lab more closely represents human perception than RGB
+if useCustomFunc
+    lab   = func(rgb);
+    bglab = func(bg);
+else
+    C     = makecform('srgb2lab');
+    lab   = applycform(rgb, C);
+    bglab = applycform(bg,  C);
+end
+
+%% Initialize distances from candidate colors to background colors
+% mindist2(i) = squared distance of candidate i to the nearest
+%               background color (excluding the last one, which is
+%               used as the "previous" color in the iterative scheme).
+mindist2 = inf(size(rgb, 1), 1);
+
+% Process all but the last background color; the last one is used
+% to initialize LASTLAB below.
+if size(bglab, 1) > 1
+    for i = 1:(size(bglab, 1) - 1)
+        dX     = bsxfun(@minus, lab, bglab(i, :));  % displacement
+        dist2  = sum(dX.^2, 2);                    % squared distances
+        mindist2 = min(dist2, mindist2);           % update minimum distance
+    end
+end
+
+%% Greedy selection of maximally separated colors
+colors  = zeros(n_colors, 3);
+lastlab = bglab(end, :); % initialize "previous" color as last background
+
+for i = 1:n_colors
+    % Distance from LASTLAB to all candidate colors
+    dX    = bsxfun(@minus, lab, lastlab);
+    dist2 = sum(dX.^2, 2);
+
+    % Update distance to nearest chosen color (including backgrounds)
+    mindist2 = min(dist2, mindist2);
+
+    % Pick the color with maximum distance to the nearest chosen color
+    [~, index] = max(mindist2);
+
+    % Save selected color and update LASTLAB
+    colors(i, :) = rgb(index, :);
+    lastlab      = lab(index, :);
+end
+
+end
+
+% -------------------------------------------------------------------------
+% Helper functions
+% -------------------------------------------------------------------------
 function c = parsecolor(s)
-  if ischar(s)
-    c = colorstr2rgb(s);
-  elseif isnumeric(s) && size(s,2) == 3
-    c = s;
-  else
-    error('MATLAB:InvalidColorSpec','Color specification cannot be parsed.');
-  end
+%PARSECOLOR  Convert various color specifications to an RGB triple.
+%
+%   C = PARSECOLOR(S)
+%     If S is a char or string, interpret it as a ColorSpec.
+%     If S is an N-by-3 numeric matrix, assume it is already RGB.
+%
+%   This helper is kept compatible with Matlab's standard ColorSpec.
+
+    if ischar(s) || (isstring(s) && isscalar(s))
+        c = colorstr2rgb(char(s));
+    elseif isnumeric(s) && size(s, 2) == 3
+        c = s;
+    else
+        error('MATLAB:InvalidColorSpec', ...
+              'Color specification cannot be parsed.');
+    end
 end
 
 function c = colorstr2rgb(c)
-  % Convert a color string to an RGB value.
-  % This is cribbed from Matlab's whitebg function.
-  % Why don't they make this a stand-alone function?
-  rgbspec = [1 0 0;0 1 0;0 0 1;1 1 1;0 1 1;1 0 1;1 1 0;0 0 0];
-  cspec = 'rgbwcmyk';
-  k = find(cspec==c(1));
-  if isempty(k)
-    error('MATLAB:InvalidColorString','Unknown color string.');
-  end
-  if k~=3 || length(c)==1,
-    c = rgbspec(k,:);
-  elseif length(c)>2,
-    if strcmpi(c(1:3),'bla')
-      c = [0 0 0];
-    elseif strcmpi(c(1:3),'blu')
-      c = [0 0 1];
-    else
-      error('MATLAB:UnknownColorString', 'Unknown color string.');
+%COLORSTR2RGB  Convert a color string to an RGB value.
+%
+%   This is cribbed from Matlab's WHITEBG function.
+%   Why don''t they make this a stand-alone function?
+
+    rgbspec = [1 0 0; 0 1 0; 0 0 1; 1 1 1; ...
+               0 1 1; 1 0 1; 1 1 0; 0 0 0];
+    cspec   = 'rgbwcmyk';
+
+    k = find(cspec == c(1), 1, 'first');
+    if isempty(k)
+        error('MATLAB:InvalidColorString', 'Unknown color string.');
     end
-  end
+
+    % Single-letter codes or full names for blue/black
+    if k ~= 3 || isscalar(c)
+        % 'r','g','b','w','c','m','y','k'
+        c = rgbspec(k, :);
+    elseif length(c) > 2
+        % Disambiguate 'bla...' (black) vs 'blu...' (blue)
+        if strcmpi(c(1:3), 'bla')
+            c = [0 0 0];
+        elseif strcmpi(c(1:3), 'blu')
+            c = [0 0 1];
+        else
+            error('MATLAB:UnknownColorString', 'Unknown color string.');
+        end
+    end
 end
